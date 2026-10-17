@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>孔夫子的解憂雜貨店 - RPG版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入復古點陣字體，支援中文 -->
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'DotGothic16', sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            /* 掃描線效果，增添復古感 */
+            background-image: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+        }
+        
+        .rpg-container {
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            max-height: 800px;
+            margin: 0 auto;
+            position: relative;
+            background-color: #000;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 4px solid #333;
+        }
+
+        .rpg-box {
+            border: 4px solid #fff;
+            border-radius: 8px;
+            background-color: #000;
+            padding: 16px;
+            box-shadow: inset 0 0 0 2px #000, inset 0 0 0 4px #fff;
+        }
+
+        .rpg-button {
+            cursor: pointer;
+            padding: 8px 16px;
+            border: 2px solid transparent;
+            text-align: left;
+            transition: all 0.1s;
+        }
+
+        .rpg-button:hover, .rpg-button.selected {
+            background-color: #fff;
+            color: #000;
+        }
+
+        /* 閃爍游標 */
+        .blinking-cursor::after {
+            content: '▼';
+            display: inline-block;
+            animation: blink 1s step-end infinite;
+            margin-left: 8px;
+            font-size: 0.8em;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        /* 像素風角色佔位圖 */
+        .pixel-avatar {
+            font-size: 80px;
+            filter: drop-shadow(2px 4px 0px rgba(255,255,255,0.3));
+        }
+
+        /* 隱藏捲軸但可滾動 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="rpg-container shadow-2xl shadow-gray-900 rounded-lg">
+        
+        <!-- 頂部資訊欄 -->
+        <div class="flex justify-between items-center p-4 border-b-2 border-gray-700 bg-gray-900">
+            <div class="text-xl">雜貨店長 LV.1</div>
+            <div class="text-xl text-yellow-400">束脩(積分): <span id="score">0</span></div>
+        </div>
+
+        <!-- 主遊戲畫面 (顯示角色與場景) -->
+        <div class="flex-1 relative flex flex-col items-center justify-end pb-8 bg-[url('https://placehold.co/600x400/222/222')] bg-cover bg-center" id="scene-container">
+            <!-- 簡單的店舖背景裝飾 -->
+            <div class="absolute inset-0 opacity-20 flex flex-wrap gap-4 p-4 pointer-events-none">
+                <div class="w-full h-1/2 border-b-4 border-dashed border-gray-500"></div>
+            </div>
+            
+            <!-- NPC 角色 -->
+            <div class="z-10 animate-bounce pixel-avatar" id="npc-avatar">
+                🧑‍🎓
+            </div>
+        </div>
+
+        <!-- 操作選單 (隱藏/顯示) -->
+        <div id="action-menu" class="absolute bottom-40 right-4 w-40 rpg-box hidden flex flex-col gap-2 z-20">
+            <button class="rpg-button text-lg" onclick="handleAction('talk')">對話</button>
+            <button class="rpg-button text-lg" onclick="handleAction('cards')">使用金句</button>
+            <button class="rpg-button text-lg" onclick="handleAction('inspect')">觀察</button>
+        </div>
+
+        <!-- 卡牌選擇選單 (隱藏/顯示) -->
+        <div id="cards-menu" class="absolute bottom-40 left-4 right-4 h-64 rpg-box hidden flex-col z-20">
+            <div class="border-b-2 border-white pb-2 mb-2 text-yellow-300">選擇一句《論語》來開導他：</div>
+            <div class="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2" id="card-list">
+                <button class="rpg-button" onclick="selectCard('己所不欲，勿施於人。')">己所不欲，勿施於人。</button>
+                <button class="rpg-button" onclick="selectCard('益者三友：友直，友諒，友多聞。')">益者三友：友直...</button>
+                <button class="rpg-button" onclick="selectCard('人不知而不慍，不亦君子乎？')">人不知而不慍，不亦君子乎？</button>
+                <button class="rpg-button text-gray-500" onclick="closeCardsMenu()">[取消]</button>
+            </div>
+        </div>
+
+        <!-- AI 解釋輸入框 (隱藏/顯示) -->
+        <div id="input-modal" class="absolute inset-4 rpg-box hidden flex-col z-30 bg-black">
+            <div class="text-yellow-300 mb-2">你選擇了：<span id="selected-quote" class="text-white"></span></div>
+            <div class="mb-2">請向學生解釋這句話的意思，並告訴他該怎麼做：</div>
+            <textarea id="player-input" class="w-full flex-1 bg-gray-900 text-white p-2 border-2 border-gray-600 focus:border-white focus:outline-none font-sans text-base resize-none" placeholder="輸入你的白話文開導..."></textarea>
+            <div class="flex justify-end gap-4 mt-4">
+                <button class="rpg-button" onclick="cancelInput()">取消</button>
+                <button class="rpg-button text-yellow-300" onclick="submitExplanation()">送出對話</button>
+            </div>
+        </div>
+
+        <!-- 對話框 (常駐底部) -->
+        <div class="h-40 rpg-box m-2 relative cursor-pointer" onclick="advanceDialog()">
+            <div class="text-yellow-300 mb-1" id="speaker-name">國七生 小明</div>
+            <div class="text-lg leading-relaxed blinking-cursor" id="dialog-text">
+                店長，我最近很煩，我好心借筆記給同學，結果他不僅沒說謝謝，還嫌我字醜，我氣到不想理他了！
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 遊戲狀態與變數
+        let score = 0;
+        let gameState = 'intro'; // intro, waiting_action, card_selected, ai_evaluating, end
+        let currentQuote = '';
+        
+        // 元素參照
+        const dialogText = document.getElementById('dialog-text');
+        const speakerName = document.getElementById('speaker-name');
+        const actionMenu = document.getElementById('action-menu');
+        const cardsMenu = document.getElementById('cards-menu');
+        const inputModal = document.getElementById('input-modal');
+        const selectedQuoteSpan = document.getElementById('selected-quote');
+        const playerInput = document.getElementById('player-input');
+        const scoreDisplay = document.getElementById('score');
+        const npcAvatar = document.getElementById('npc-avatar');
+
+        // 打字機效果參數
+        let typeWriterTimeout;
+        let isTyping = false;
+        let fullText = '';
+
+        // 啟動遊戲
+        function initGame() {
+            setDialog("國七生 小明", "店長，我最近很煩，我好心借筆記給同學，結果他不僅沒說謝謝，還嫌我字醜，我氣到不想理他了！");
+            gameState = 'intro';
+        }
+
+        // 設定對話與打字機效果
+        function setDialog(name, text) {
+            speakerName.innerText = name;
+            fullText = text;
+            dialogText.innerText = '';
+            isTyping = true;
+            dialogText.classList.remove('blinking-cursor');
+            
+            clearTimeout(typeWriterTimeout);
+            
+            let i = 0;
+            function typeWriter() {
+                if (i < fullText.length) {
+                    dialogText.innerHTML += fullText.charAt(i);
+                    i++;
+                    typeWriterTimeout = setTimeout(typeWriter, 30); // 打字速度
+                } else {
+                    isTyping = false;
+                    dialogText.classList.add('blinking-cursor');
+                }
+            }
+            typeWriter();
+        }
+
+        // 處理點擊對話框 (加速打字或進入下一步)
+        function advanceDialog() {
+            if (isTyping) {
+                // 如果正在打字，點擊直接顯示全段
+                clearTimeout(typeWriterTimeout);
+                dialogText.innerText = fullText;
+                isTyping = false;
+                dialogText.classList.add('blinking-cursor');
+            } else {
+                // 根據狀態推進遊戲
+                if (gameState === 'intro') {
+                    setDialog("系統", "請選擇你的行動。");
+                    actionMenu.classList.remove('hidden');
+                    gameState = 'waiting_action';
+                } else if (gameState === 'end') {
+                    setDialog("系統", "成功開導一名學生！等待下一位客人...");
+                    setTimeout(() => {
+                        alert("展示結束！在正式版中，這裡會載入下一個隨機情境。");
+                        initGame();
+                    }, 2000);
+                }
+            }
+        }
+
+        // 處理主選單動作
+        function handleAction(action) {
+            if (action === 'talk') {
+                actionMenu.classList.add('hidden');
+                setDialog("國七生 小明", "拜託店長給我一點建議，我真的覺得好委屈...");
+                gameState = 'intro'; // 讓它回到需要點擊下一步的狀態
+            } else if (action === 'inspect') {
+                actionMenu.classList.add('hidden');
+                setDialog("系統", "小明看起來滿臉通紅，似乎對於付出的善意被糟蹋感到非常憤怒。");
+                gameState = 'intro';
+            } else if (action === 'cards') {
+                actionMenu.classList.add('hidden');
+                cardsMenu.classList.remove('hidden');
+            }
+        }
+
+        function closeCardsMenu() {
+            cardsMenu.classList.add('hidden');
+            actionMenu.classList.remove('hidden');
+        }
+
+        function selectCard(quote) {
+            currentQuote = quote;
+            cardsMenu.classList.add('hidden');
+            selectedQuoteSpan.innerText = quote;
+            inputModal.classList.remove('hidden');
+            inputModal.style.display = 'flex';
+            playerInput.value = ''; // 清空輸入
+        }
+
+        function cancelInput() {
+            inputModal.classList.add('hidden');
+            inputModal.style.display = 'none';
+            cardsMenu.classList.remove('hidden');
+        }
+
+        // 模擬 AI 評分機制
+        function submitExplanation() {
+            const explanation = playerInput.value.trim();
+            if (explanation.length < 5) {
+                // 這裡本來不該用alert，用系統訊息代替
+                inputModal.classList.add('hidden');
+                inputModal.style.display = 'none';
+                setDialog("系統", "你的解釋太短了，小明聽不懂，請再試一次。");
+                gameState = 'intro';
+                return;
+            }
+
+            inputModal.classList.add('hidden');
+            inputModal.style.display = 'none';
+            
+            gameState = 'ai_evaluating';
+            npcAvatar.innerText = '🤔';
+            setDialog("系統", "小明正在思考你的話...(AI 判定中)");
+
+            // 模擬 API 延遲
+            setTimeout(() => {
+                evaluateResponse(currentQuote, explanation);
+            }, 2000);
+        }
+
+        function evaluateResponse(quote, explanation) {
+            // 在正式版中，這裡會打 API 給 Gemini 進行判定
+            // 這裡寫死一個簡單的邏輯來模擬
+            
+            if (quote === '人不知而不慍，不亦君子乎？') {
+                npcAvatar.innerText = '🤩';
+                setDialog("國七生 小明", "原來如此！如果我因為他的無知而生氣，反而懲罰了自己。店長說得對，我做到了君子的風度！謝謝店長！");
+                updateScore(100);
+            } else if (quote === '己所不欲，勿施於人。') {
+                npcAvatar.innerText = '🤨';
+                setDialog("國七生 小明", "這句話好像是說不要把自己不喜歡的加在別人身上？可是...是我好心借他筆記耶，好像有點不太符合我的狀況？");
+                updateScore(20);
+            } else {
+                npcAvatar.innerText = '😵';
+                setDialog("國七生 小明", "店長你說的太深奧了...我還是去打電動發洩一下好了。");
+                updateScore(0);
+            }
+            
+            gameState = 'end';
+        }
+
+        function updateScore(points) {
+            score += points;
+            scoreDisplay.innerText = score;
+            
+            // 增加分數動畫
+            scoreDisplay.classList.add('text-white', 'text-2xl', 'font-bold');
+            setTimeout(() => {
+                scoreDisplay.classList.remove('text-white', 'text-2xl', 'font-bold');
+            }, 500);
+        }
+
+        // 初始化
+        window.onload = initGame;
+    </script>
+</body>
+</html>
